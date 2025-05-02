@@ -1,0 +1,49 @@
+﻿@model sinan_misir_internet.DAL.File
+
+@{
+    ViewData["Title"] = "Dosya Yükle";
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+}
+
+<h1>Dosya Yükle</h1>
+
+<hr />
+<div class="row">
+    <div class="col-md-6">
+        <form asp-action="Create" enctype="multipart/form-data" method="post">
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+
+            <div class="form-group">
+                <label class="control-label">Dosya Seç</label>
+                <input type="file" name="uploadedFile" class="form-control" required />
+            </div>
+
+            <div class="form-group">
+                <label asp-for="UserId" class="control-label">Kullanıcı</label>
+                <select asp-for="UserId" class="form-control" asp-items="ViewBag.UserId">
+                    <option value="">Kullanıcı Seç</option>
+                </select>
+                <span asp-validation-for="UserId" class="text-danger"></span>
+            </div>
+
+            <div class="form-group">
+                <label asp-for="FolderId" class="control-label">Klasör (Opsiyonel)</label>
+                <select asp-for="FolderId" class="form-control" asp-items="ViewBag.FolderId">
+                    <option value="">(Klasörsüz)</option>
+                </select>
+                <span asp-validation-for="FolderId" class="text-danger"></span>
+            </div>
+
+            <div class="form-group mt-3">
+                <input type="submit" value="Yükle" class="btn btn-success" />
+                <a asp-action="Index" class="btn btn-secondary">Geri</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@section Scripts {
+    @{
+        await Html.RenderPartialAsync("_ValidationScriptsPartial");
+    }
+}

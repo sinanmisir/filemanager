@@ -1,0 +1,47 @@
+﻿@model IEnumerable<sinan_misir_internet.DAL.DeletedFile>
+
+@{
+    ViewData["Title"] = "Geri Dönüşüm Kutusu";
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+}
+
+<h2>Geri Dönüşüm Kutusu</h2>
+
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Dosya Adı</th>
+            <th>Yol</th>
+            <th>Silinme Tarihi</th>
+            <th>Kullanıcı</th>
+            <th>İşlemler</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model)
+        {
+            <tr>
+                <td>@item.FileName</td>
+                <td>@item.FilePath</td>
+                <td>@item.DeletedAt.ToString("dd.MM.yyyy HH:mm")</td>
+                <td>@item.User.UserName</td>
+                <td>
+                    <form asp-action="Restore" method="post" style="display:inline">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button type="submit" class="btn btn-success btn-sm">Geri Yükle</button>
+                    </form>
+                    <form asp-action="DeletePermanent" method="post" style="display:inline" onsubmit="return confirm('Kalıcı olarak silmek istediğinize emin misiniz?');">
+                        <input type="hidden" name="id" value="@item.Id" />
+                        <button type="submit" class="btn btn-danger btn-sm">Kalıcı Sil</button>
+                    </form>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+@if (TempData["Error"] != null)
+{
+    <div class="alert alert-warning">
+        @TempData["Error"]
+    </div>
+}

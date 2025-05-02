@@ -1,0 +1,419 @@
+﻿@model List<sinan_misir_internet.DAL.File>
+@{
+    Layout = null;
+    ViewData["Title"] = "Dosya Yöneticisi";
+    var folders = ViewBag.Folders as List<sinan_misir_internet.DAL.Folder>;
+    int? currentFolderId = ViewBag.CurrentFolderId;
+}
+@functions {
+    private string GetFileIconClass(string fileName)
+    {
+        string ext = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".webp" or ".bmp" => "image",
+            ".pdf" => "pdf",
+            ".doc" or ".docx" => "word",
+            ".xls" or ".xlsx" => "excel",
+            ".ppt" or ".pptx" => "ppt",
+            ".txt" => "text",
+            ".zip" or ".rar" => "archive",
+            ".mp4" or ".avi" or ".mov" => "video",
+            ".mp3" or ".wav" => "audio",
+            _ => "file"
+        };
+    }
+
+    private bool IsImage(string fileName)
+    {
+        var imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
+        var ext = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+        return imageExtensions.Contains(ext);
+    }
+}
+
+
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dosya Yöneticisi</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #6366f1;
+            --secondary-color: #1e293b;
+            --accent-color: #94a3b8;
+            --background-color: #0f172a;
+            --card-bg: #1e293b;
+            --hover-color: #2d3748;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1;
+            --border-color: #334155;
+        }
+
+        body {
+            background-color: var(--background-color);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .card-header {
+            background-color: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1.5rem;
+        }
+
+        .btn {
+            border-radius: 12px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            border: none;
+            color: white;
+        }
+
+            .btn-primary:hover {
+                background-color: #4f46e5;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+            }
+
+        .btn-outline-danger {
+            color: #ef4444;
+            border-color: #ef4444;
+        }
+
+            .btn-outline-danger:hover {
+                background-color: #ef4444;
+                color: white;
+            }
+
+        .list-group-item {
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            margin-bottom: 0.5rem;
+            border-radius: 12px !important;
+            padding: 1rem;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+            .list-group-item:hover {
+                background-color: var(--hover-color);
+                transform: translateX(5px);
+            }
+
+        .table {
+            color: var(--text-primary);
+        }
+
+            .table th {
+                background-color: rgba(255, 255, 255, 0.05);
+                color: var(--text-secondary);
+                font-weight: 600;
+                border-bottom: 2px solid var(--border-color);
+                padding: 1rem;
+            }
+
+            .table td {
+                border-color: var(--border-color);
+                padding: 1rem;
+            }
+
+            .table tbody tr {
+                transition: all 0.3s ease;
+            }
+
+                .table tbody tr:hover {
+                    background-color: var(--hover-color);
+                }
+
+        .form-control {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            border-radius: 12px;
+            padding: 0.75rem 1rem;
+        }
+
+            .form-control:focus {
+                background-color: rgba(255, 255, 255, 0.1);
+                border-color: var(--primary-color);
+                color: var(--text-primary);
+                box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+            }
+
+        .alert {
+            background-color: rgba(234, 179, 8, 0.2);
+            border: 1px solid rgba(234, 179, 8, 0.3);
+            color: #fef08a;
+            border-radius: 12px;
+        }
+
+        .page-header {
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 2rem;
+            letter-spacing: -0.025em;
+        }
+
+        .action-card {
+            background: linear-gradient(45deg, rgba(99, 102, 241, 0.1), rgba(99, 102, 241, 0.05));
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .file-icon {
+            font-size: 1.25rem;
+            width: 2.5rem;
+            height: 2.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary-color);
+            margin-right: 1rem;
+        }
+
+        .folder-icon {
+            background: rgba(234, 179, 8, 0.1);
+            color: #eab308;
+        }
+
+        .btn-group .btn {
+            padding: 0.5rem 1rem;
+            margin: 0 0.25rem;
+        }
+
+        /* Özel scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--card-bg);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: var(--accent-color);
+            }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        @if (TempData["Error"] != null)
+        {
+            <div class="alert mb-4">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                @TempData["Error"]
+            </div>
+        }
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="page-header mb-0">Dosya Yöneticisi</h1>
+            <a asp-action="RecycleBin" class="btn btn-outline-danger">
+                <i class="fas fa-trash-alt me-2"></i>Geri Dönüşüm Kutusu
+            </a>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body p-4">
+                @if (currentFolderId != null)
+                {
+                    <div class="mb-4">
+                        <a asp-action="Index" asp-route-folderId="" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Üst Klasöre Dön
+                        </a>
+                    </div>
+                }
+
+                <div class="row g-4 mb-5">
+                    <div class="col-md-6">
+                        <div class="card action-card">
+                            <div class="card-body p-4">
+                                <h5 class="card-title text-primary mb-4">
+                                    <i class="fas fa-upload me-2"></i>Dosya Yükle
+                                </h5>
+                                <form asp-action="Upload" asp-controller="FileManager" method="post" enctype="multipart/form-data">
+                                    <div class="input-group">
+                                        <input type="file" name="file" class="form-control" />
+                                        <input type="hidden" name="folderId" value="@currentFolderId" />
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-upload me-2"></i>Yükle
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card action-card">
+                            <div class="card-body p-4">
+                                <h5 class="card-title text-primary mb-4">
+                                    <i class="fas fa-folder-plus me-2"></i>Klasör Oluştur
+                                </h5>
+                                <form asp-action="CreateFolder" asp-controller="FileManager" method="post">
+                                    <div class="input-group">
+                                        <input type="text" name="folderName" class="form-control" placeholder="Klasör adı girin" required />
+                                        <input type="hidden" name="parentFolderId" value="@currentFolderId" />
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-folder-plus me-2"></i>Oluştur
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="folders-section mb-5">
+                    <h5 class="text-primary mb-4"><i class="fas fa-folder me-2"></i>Klasörler</h5>
+                    <div class="list-group">
+                        @foreach (var folder in folders)
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <a asp-action="Index" asp-route-folderId="@folder.Id" class="text-decoration-none text-light d-flex align-items-center">
+                                    <span class="file-icon folder-icon">
+                                        <i class="fas fa-folder"></i>
+                                    </span>
+                                    @folder.Name
+                                </a>
+                                <div class="btn-group">
+                                    <a asp-action="MoveFolder" asp-route-id="@folder.Id" class="btn btn-sm btn-warning">
+                                        <i class="fas fa-arrows-alt"></i>
+                                    </a>
+                                    <form asp-action="DeleteFolder" method="post" class="d-inline">
+                                        <input type="hidden" name="id" value="@folder.Id" />
+                                        <button type="submit" class="btn btn-sm btn-danger"
+                                                onclick="return confirm('Klasörü silmek istediğinize emin misiniz?');">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="files-section">
+                    <h5 class="text-primary mb-4"><i class="fas fa-file me-2"></i>Dosyalar</h5>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Dosya Adı</th>
+                                    <th>Yüklenme Tarihi</th>
+                                    <th>Boyut (KB)</th>
+                                    <th>İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var file in Model)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="d-flex align-items-center">
+                                                @if (IsImage(file.FileName))
+                                                {
+                                                    <img src="@file.FilePath" alt="preview" style="width: 48px; height: 48px; object-fit: cover; border-radius: 8px; margin-right: 12px;" />
+                                                }
+                                                else
+                                                {
+                                                    var iconClass = GetFileIconClass(file.FileName);
+                                                    <span class="file-icon">
+                                                        @switch (iconClass)
+                                                        {
+                                                            case "pdf":
+                                                                <i class="fas fa-file-pdf text-danger"></i>
+                                                                ; break;
+                                                            case "word":
+                                                                <i class="fas fa-file-word text-primary"></i>
+                                                                ; break;
+                                                            case "excel":
+                                                                <i class="fas fa-file-excel text-success"></i>
+                                                                ; break;
+                                                            case "ppt":
+                                                                <i class="fas fa-file-powerpoint text-warning"></i>
+                                                                ; break;
+                                                            case "text":
+                                                                <i class="fas fa-file-alt text-muted"></i>
+                                                                ; break;
+                                                            case "archive":
+                                                                <i class="fas fa-file-archive text-warning"></i>
+                                                                ; break;
+                                                            case "video":
+                                                                <i class="fas fa-file-video text-info"></i>
+                                                                ; break;
+                                                            case "audio":
+                                                                <i class="fas fa-file-audio text-info"></i>
+                                                                ; break;
+                                                            default:
+                                                                <i class="fas fa-file"></i>
+                                                                ; break;
+                                                        }
+                                                    </span>
+                                                }
+
+                                                @file.FileName
+                                            </div>
+                                        </td>
+
+
+                                        <td>@file.UploadedAt.ToString("g")</td>
+                                        <td>@(file.Size / 1024)</td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <a href="@Url.Action("Download", new { id = file.Id })"
+                                                   class="btn btn-sm btn-primary">
+                                                    <i class="fas fa-download"></i>
+                                                </a>
+                                                <a href="@Url.Action("Preview", new { id = file.Id })"
+                                                   class="btn btn-sm btn-outline-info" target="_blank">
+                                                    <i class="fas fa-eye"></i>
+                                                </a>
+                                                <form asp-action="DeleteFile" method="post" class="d-inline">
+                                                    <input type="hidden" name="id" value="@file.Id" />
+                                                    <input type="hidden" name="folderId" value="@currentFolderId" />
+                                                    <button type="submit" class="btn btn-sm btn-danger"
+                                                            onclick="return confirm('Dosyayı silmek istediğinize emin misiniz?');">
+                                                        <i class="fas fa-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

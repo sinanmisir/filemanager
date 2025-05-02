@@ -1,0 +1,3036 @@
+<?php
+session_start();
+if(!isset($_SESSION['userid'])) {
+    header("Location: login.php");
+    exit();
+}
+
+require_once("classes/autoload.php");
+$DB = new Database();
+
+// Varsayılan değerler
+$username = "Kullanıcı";
+$status = "offline";
+$gender = "Male";
+$user_image = "ui/images/user_male.jpg";
+
+try {
+    $query = "SELECT username, status, gender, image FROM users WHERE userid = :userid LIMIT 1";
+    $result = $DB->read($query, ['userid' => $_SESSION['userid']]);
+
+    if($result && is_array($result) && !empty($result)) {
+        $user = $result[0];
+        $username = htmlspecialchars($user->username ?? "Kullanıcı");
+        $status = $user->status ?? "offline";
+        $gender = $user->gender ?? "Male";
+        $user_image = $user->image ?? (
+            $gender == "Female" ? "ui/images/user_female.jpg" : "ui/images/user_male.jpg"
+        );
+    }
+
+} catch(Exception $e) {
+    error_log("Hata: " . $e->getMessage());
+    header("Location: login.php");
+    exit();
+}
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        /* TEMEL STİLLER */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: #36393f;
+            height: 100vh;
+            display: flex;
+        }
+
+        /* SİDEBAR STİLLERİ */
+        .sidebar {
+            width: 80px;
+            background: #1e1f22;
+            height: 100vh;
+            position: fixed;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1000;
+            box-shadow: 4px 0 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar.expanded {
+            width: 280px;
+            border-right: 1px solid #393b41;
+        }
+
+        .nav_buttons_container {
+            padding: 16px 8px;
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .nav_button {
+            width: 100%;
+            height: 48px;
+            margin: 4px 0;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: #b5bac1;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav_button:hover {
+            background: #35373c;
+            color: #dbdee1;
+        }
+
+        .nav_button::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 4px;
+            height: 0;
+            background: #5865f2;
+            border-radius: 0 4px 4px 0;
+            transition: height 0.2s ease;
+        }
+
+        .nav_button.active::before {
+            height: 80%;
+        }
+
+        .nav_button img {
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
+            filter: brightness(0.9);
+        }
+
+        .nav_button_text {
+            font-size: 15px;
+            font-weight: 500;
+            margin-left: 16px;
+            opacity: 0;
+            white-space: nowrap;
+            transition: opacity 0.2s 0.1s ease;
+        }
+
+        .sidebar.expanded .nav_button_text {
+            opacity: 1;
+        }
+
+        /* KULLANICI PROFİL */
+        .user_profile_container {
+            padding: 16px;
+            background: #232428;
+            border-top: 1px solid #393b41;
+            margin-top: auto;
+        }
+
+        .profile_avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid #5865f2;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .profile_details {
+            flex: 1;
+            min-width: 0;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .sidebar.expanded .profile_details {
+            opacity: 1;
+        }
+
+        .profile_username {
+            color: #f2f3f5;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .profile_status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 4px;
+        }
+
+        .status_dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            background: <?php echo $status == "online" ? "#23a55a" : "#80848e"; ?>;
+        }
+
+        .status_text {
+            color: #b5bac1;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        /* TOGGLE BUTON */
+        .toggle_sidebar {
+            position: absolute;
+            left: calc(100% - 4px);
+            top: 24px;
+            width: 28px;
+            height: 28px;
+            background: #313338;
+            border: 2px solid #1e1f22;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1100;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar.expanded .toggle_sidebar {
+            left: 100%;
+            transform: translateX(-50%);
+            background: #5865f2;
+            border-color: #4752c4;
+        }
+
+        .toggle_sidebar::before {
+            content: "›";
+            color: #b5bac1;
+            font-size: 18px;
+            font-weight: 700;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar.expanded .toggle_sidebar::before {
+            content: "‹";
+            color: white;
+        }
+
+        /* CONTENT ALANI */
+        .content {
+            flex: 1;
+            margin-left: 80px;
+            padding: 24px;
+            transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 100vh;
+            background: #313338;
+            position: relative;
+            z-index: 50;
+        }
+
+        .sidebar.expanded + .content {
+            margin-left: 280px;
+        }
+
+        /* HOŞGELDİN KARTLARI */
+        .welcome_section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+            padding: 24px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .welcome_card {
+            background: #2f3136;
+            border-radius: 12px;
+            padding: 32px;
+            text-align: center;
+            border: 1px solid #40444b;
+            transition: transform 0.2s;
+        }
+
+        .welcome_card:hover {
+            transform: translateY(-5px);
+        }
+
+        .welcome_card img {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 16px;
+        }
+
+        .welcome_card h3 {
+            color: #fff;
+            margin-bottom: 16px;
+            font-size: 1.4rem;
+        }
+
+        .welcome_card button {
+            background: #5865f2;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .welcome_card button:hover {
+            background: #4752c4;
+        }
+
+        /* RESPONSIVE TASARIM */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: 72px;
+                bottom: 0;
+                top: auto;
+                flex-direction: row;
+                box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.2);
+            }
+            
+            .sidebar.expanded {
+                height: 100vh;
+                width: 100%;
+                z-index: 2000;
+            }
+
+            .nav_buttons_container {
+                flex-direction: row;
+                overflow-x: auto;
+                padding: 8px;
+            }
+
+            .nav_button {
+                min-width: 60px;
+                height: 56px;
+                margin: 0 4px;
+            }
+
+            .user_profile_container {
+                display: none;
+            }
+
+            .content {
+                margin-left: 0;
+                padding-bottom: 88px;
+            }
+
+            .sidebar.expanded + .content {
+                margin-left: 0;
+            }
+
+            .toggle_sidebar {
+                position: fixed;
+                right: 20px;
+                top: 20px;
+                left: auto;
+                background: #5865f2 !important;
+            }
+        }
+
+        #incoming_call_modal {
+  display: flex;
+  justify-content: center;   /* Yatayda ortala */
+  align-items: flex-start;     /* Dikeyde üst tarafa hizala */
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5); /* Hafif karartılmış arka plan */
+  z-index: 9999;
+  padding-top: 50px;  /* Üstten biraz boşluk bırakır */
+}
+
+#incoming_call_modal.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Modal içerik kutusu */
+.modal-content {
+    background: linear-gradient(135deg, rgba(47, 49, 54, 0.95), rgba(32, 34, 37, 0.95));
+    border-radius: 24px;
+    padding: 32px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.3);
+    position: relative;
+    overflow: hidden;
+    animation: modalSlideUp 0.5s ease forwards;
+}
+
+@keyframes modalSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#caller_info {
+    color: #fff;
+    font-size: 24px;
+    font-weight: 600;
+    margin: 20px 0;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.ring-animation {
+    width: 80px;
+    height: 80px;
+    background: #5865f2;
+    border-radius: 50%;
+    margin: 0 auto 24px;
+    position: relative;
+    animation: ring 2s infinite;
+}
+
+.ring-animation::before,
+.ring-animation::after {
+    content: '';
+    position: absolute;
+    border: 3px solid #5865f2;
+    border-radius: 50%;
+    width: 100%;
+    height: 100%;
+    left: -3px;
+    top: -3px;
+    animation: ringWave 2s infinite;
+}
+
+.ring-animation::after {
+    animation-delay: 0.5s;
+}
+
+@keyframes ring {
+    0% { transform: rotate(-15deg); }
+    50% { transform: rotate(15deg); }
+    100% { transform: rotate(-15deg); }
+}
+
+@keyframes ringWave {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Sound wave animation */
+.sound-waves {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 4px;
+    height: 40px;
+    margin: 20px 0;
+}
+
+.wave {
+    width: 4px;
+    height: 20px;
+    background: #5865f2;
+    border-radius: 2px;
+    animation: wave 1s ease infinite;
+}
+
+.wave:nth-child(2) { animation-delay: 0.1s; }
+.wave:nth-child(3) { animation-delay: 0.2s; }
+.wave:nth-child(4) { animation-delay: 0.3s; }
+.wave:nth-child(5) { animation-delay: 0.4s; }
+
+
+@keyframes wave {
+    0%, 100% { height: 20px; }
+    50% { height: 40px; }
+}
+
+.call-buttons {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    margin-top: 24px;
+}
+
+#accept_call, #reject_call {
+    padding: 16px;
+    border: none;
+    border-radius: 50%;
+    width: 64px;
+    height: 64px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+#accept_call {
+    background: linear-gradient(45deg, #3ba55c, #43b581);
+}
+
+#accept_call:hover {
+    background: linear-gradient(45deg, #43b581, #4bc893);
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 8px 24px rgba(59, 165, 92, 0.4);
+}
+
+#reject_call {
+    background: linear-gradient(45deg, #ed4245, #f04747);
+}
+
+#reject_call:hover {
+    background: linear-gradient(45deg, #f04747, #f25555);
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 8px 24px rgba(237, 66, 69, 0.4);
+}
+
+#accept_call:active, #reject_call:active {
+    transform: scale(0.95);
+}
+.hidden {
+  display: none;
+}
+
+                .voice_call_btn {
+            padding: 10px;
+            background: #5865f2;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .voice_call_btn:hover {
+            background: #4752c4;
+            transform: scale(1.1);
+        }
+
+        .voice_call_btn img {
+            width: 20px;
+            height: 20px;
+            filter: brightness(0) invert(1);
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .modal-content {
+            position: relative;
+            animation: modalSlide 0.3s ease-out;
+        }
+
+        @keyframes modalSlide {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .call_status {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 24px;
+        }
+
+        .end_call_btn {
+            padding: 16px;
+            background: #ed4245;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .end_call_btn:hover {
+            background: #c03537;
+            transform: scale(1.1);
+        }
+
+        .end_call_btn img {
+            width: 24px;
+            height: 24px;
+            filter: brightness(0) invert(1);
+        }
+
+                .call-status {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            min-width: 300px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .call-status h2 {
+            margin: 0 0 1rem 0;
+            font-size: 1.5rem;
+            color: #fff;
+        }
+
+        .call-timer {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 1rem 0;
+            font-family: monospace;
+            color: #4CAF50;
+        }
+
+        .call-status-icon {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 1rem;
+            border-radius: 50%;
+            background: #4CAF50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: pulse 2s infinite;
+        }
+
+        .call-status-icon::before {
+            content: '';
+            width: 30px;
+            height: 30px;
+            background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xMiAxNWMxLjY1IDAgMy0xLjM1IDMtM3YtNmMwLTEuNjUtMS4zNS0zLTMtM3MtMyAxLjM1LTMgM3Y2YzAgMS42NSAxLjM1IDMgMyAzek0yMCAxNGgtMi40MmMtLjE0IDEuNTUtLjg1IDIuOTYtMi4wNCA0LjA2bDEuNTcgMS41N2MxLjY1LTEuNjYgMi43MS0zLjg4IDIuODktNi4zM3YtLjN6TTEyIDIwYy0zLjMxIDAtNi0yLjY5LTYtNkg0YzAgNC40MiAzLjU4IDggOCA4czgtMy41OCA4LThoLTJjMCAzLjMxLTIuNjkgNi02IDZ6Ii8+PC9zdmc+') center/contain no-repeat;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
+            }
+            70% {
+                box-shadow: 0 0 0 20px rgba(76, 175, 80, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+
+        .end-call-btn {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 2rem;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 1rem;
+            transition: background 0.3s ease;
+        }
+
+        .end-call-btn:hover {
+            background: #d32f2f;
+        }
+
+        .screen-sharing-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 300px;
+    background: #2f3136;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1001;
+    display: none;
+}
+
+.screen-sharing-header {
+    padding: 12px;
+    background: #202225;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: #fff;
+}
+
+.screen-sharing-content {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 10px;
+}
+
+
+.local-screen-preview video, 
+.remote-screen-view video {
+    width: 100%;
+    border-radius: 4px;
+    background: #000;
+    max-height: 200px;
+    object-fit: contain;
+}
+
+
+.close-screen-share {
+    background: none;
+    border: none;
+    padding: 5px;
+    cursor: pointer;
+}
+
+.close-screen-share img {
+    width: 16px;
+    height: 16px;
+    filter: invert(0.8);
+}
+    </style>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+</head>
+<body>
+    <div class="sidebar" id="sidebar">
+        <button class="toggle_sidebar" onclick="toggleSidebar()"></button>
+        
+        <div class="nav_buttons_container">
+            <button class="nav_button" onclick="loadMessages()">
+                <img src="ui/icons/bubble-chat.png" alt="Messages">
+                <span class="nav_button_text">Mesajlar</span>
+            </button>
+            
+            <button class="nav_button" onclick="loadContent('contacts')">
+                <img src="ui/icons/add-user.png" alt="Contacts">
+                <span class="nav_button_text">Kişiler</span>
+            </button>
+            
+            <button class="nav_button" onclick="loadContent('friends')">
+                <img src="ui/icons/friends.png" alt="Friends">
+                <span class="nav_button_text">Arkadaşlar</span>
+            </button>
+            
+            <button class="nav_button" onclick="loadContent('groups')">
+                <img src="ui/icons/groups.png" alt="Groups">
+                <span class="nav_button_text">Gruplar</span>
+            </button>
+            
+            <button class="nav_button" onclick="loadContent('settings')">
+                <img src="ui/icons/settings1.png" alt="Settings">
+                <span class="nav_button_text">Ayarlar</span>
+            </button>
+            <button class="nav_button" onclick="logout()">
+                <img src="ui/icons/logout1.png" alt="Logout">
+                <span class="nav_button_text">Çıkış Yap</span>
+            </button>
+        </div>
+
+        <div class="user_profile_container">
+            <div class="profile_content">
+                <img src="<?php echo $user_image; ?>" class="profile_avatar"
+                     onerror="this.src='<?php echo ($gender == "Female" ? "ui/images/user_female.jpg" : "ui/images/user_male.jpg"); ?>'">
+                <div class="profile_details">
+                    <div class="profile_username"><?php echo $username; ?></div>
+                    <div class="profile_status">
+                        <span class="status_dot"></span>
+                        <span class="status_text"><?php echo ($status == "online" ? "Çevrimiçi" : "Çevrimdışı"); ?></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+    <div class="content">
+        <!-- Hoşgeldin İçeriği -->
+        <div class="welcome_section" id="welcome_section">
+            <div class="welcome_card">
+                <img src="ui/icons/rocket.png" alt="Quick Start">
+                <h3>Hızlı Başlangıç</h3>
+                <button onclick="loadContent('contacts')">Yeni Kişi Ekle</button>
+                <button onclick="showCreateGroupModal()">Grup Oluştur</button>
+            </div>
+            
+            <div class="welcome_card">
+                <img src="ui/icons/news.png" alt="Updates">
+                <h3>Son Güncellemeler</h3>
+                <p>• Yeni grup yönetim araçları<br>• Gelişmiş profil özelleştirme<br>• Performans iyileştirmeleri</p>
+            </div>
+        </div>
+
+        <!-- Dinamik İçerik -->
+        <div id="main_content"></div>
+    </div>
+
+    <div id="incoming_call_modal" style="display: none;">
+    <div class="modal-content">
+        <div class="ring-animation"></div>
+        <p id="caller_info">Çağrı yapan:</p>
+        
+        <div class="sound-waves">
+            <div class="wave"></div>
+            <div class="wave"></div>
+            <div class="wave"></div>
+            <div class="wave"></div>
+            <div class="wave"></div>
+        </div>
+        
+        <div class="call-buttons">
+            <button id="accept_call">
+                <i class="fas fa-phone"></i>
+            </button>
+            <button id="reject_call">
+                <i class="fas fa-phone-slash"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="callStatus" class="call-status" style="display: none;">
+        <div class="call-status-icon"></div>
+        <h2>Görüşme devam ediyor...</h2>
+        <div id="callTimer" class="call-timer">00:00:00</div>
+        <button class="end-call-btn" onclick="endCall()">Görüşmeyi Sonlandır</button>
+</div>
+
+<div id="call_modal" class="modal" style="display: none;">
+        <div class="modal_content">
+            <div class="call_status"></div>
+            <div class="call_controls">
+                <button class="end_call_btn" onclick="endCall()">
+                    <img src="ui/icons/phone-off.png" alt="End Call">
+                </button>
+            </div>
+        </div>
+            <audio id="local_audio" muted></audio> <!-- Yerel mikrofon feedback -->
+    <audio id="remote_audio" autoplay></audio> <!-- Karşı tarafın sesi -->
+    </div>
+
+    <div id="screen_sharing_container" class="screen-sharing-container">
+    <div class="screen-sharing-header">
+        <span>Ekran Paylaşımı</span>
+        <button onclick="stopScreenSharing()" class="close-screen-share">
+            <img src="ui/icons/close.png" alt="Stop Sharing">
+        </button>
+    </div>
+    <div class="screen-sharing-content">
+        <div class="local-screen-preview">
+            <video id="local_screen" muted autoplay playsinline></video>
+        </div>
+        <div class="remote-screen-view">
+            <video id="remote_screen" autoplay playsinline></video>
+        </div>
+    </div>
+</div>
+
+<audio id="calling_sound" class="hidden" loop>
+  <source src="ui/sounds/calling_sound.mp3" type="audio/mpeg">
+</audio>
+
+<audio id="incoming_call_sound" class="hidden" loop>
+  <source src="ui/sounds/incoming_call_sound.mp3" type="audio/mpeg">
+</audio>
+    <script>
+        var CURRENT_CHAT_USER = "";
+        var SEEN_STATUS = false;
+        function _(element) {
+        return document.getElementById(element);
+    }
+    let screenStream = null;
+let isScreenSharing = false;
+    let startTime;
+    let timerInterval;
+    let callingSound = document.getElementById('calling_sound');
+let incomingSound = document.getElementById('incoming_call_sound');
+
+
+async function toggleScreenSharing() {
+    if (!isScreenSharing) {
+        await startScreenSharing();
+    } else {
+        stopScreenSharing();
+    }
+}
+
+async function startScreenSharing() {
+    try {
+        const peerId = getCurrentPeerId();
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { displaySurface: 'monitor', frameRate: 30 },
+            audio: true
+        });
+
+        // Yeni video track'i ekleyin
+        const screenTrack = screenStream.getVideoTracks()[0];
+        const sender = peerConnection.getSenders().find(s => 
+            s.track && s.track.kind === 'video'
+        );
+        
+        if (sender) {
+            await sender.replaceTrack(screenTrack);
+        } else {
+            // Ekran paylaşımı için yeni transceiver ekleyin
+            peerConnection.addTransceiver(screenTrack, {
+                direction: 'sendonly',
+                streams: [screenStream]
+            });
+        }
+
+        // Yeni offer oluştur
+        const offer = await peerConnection.createOffer({
+            offerToReceiveVideo: true // Video almayı zorunlu kıl
+        });
+        await peerConnection.setLocalDescription(offer);
+        
+        socket.emit('screenShareOffer', {
+            to: peerId,
+            offer: offer,
+            isScreen: true // Ekran paylaşımı olduğunu belirt
+        });
+
+        // UI güncelleme
+        showScreenPreview(screenStream);
+        socket.emit('screenShareStarted', peerId);
+
+    } catch (err) {
+        console.error('Ekran paylaşım hatası:', err);
+        stopScreenSharing();
+    }
+}
+
+function stopScreenSharing() {
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        socket.emit('screenShareStopped', getCurrentPeerId());
+        
+        // Kamera görüntüsüne geri dön
+        const videoSender = peerConnection.getSenders()
+            .find(s => s.track?.kind === 'video');
+        if (videoSender && localStream) {
+            const videoTrack = localStream.getVideoTracks()[0];
+            videoSender.replaceTrack(videoTrack);
+        }
+    }
+    hideScreenContainer();
+}
+socket.on('remoteScreenShareStarted', () => {
+    const remoteScreenContainer = document.getElementById('screen_sharing_container');
+    remoteScreenContainer.style.display = 'block';
+    remoteScreenContainer.querySelector('.local-screen-preview').style.display = 'none';
+    remoteScreenContainer.querySelector('.remote-screen-view').style.display = 'block';
+});
+
+socket.on('remoteScreenShareStopped', () => {
+    const remoteScreen = document.getElementById('remote_screen');
+    remoteScreen.srcObject = null;
+    document.getElementById('screen_sharing_container').style.display = 'none';
+});
+
+// Socket.io event handlers
+socket.on('screenShareOffer', async (data) => {
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        socket.emit('screenShareAnswer', {
+            to: data.from,
+            answer: answer
+        });
+    } catch (err) {
+        console.error('Ekran paylaşım cevap hatası:', err);
+    }
+});
+
+socket.on('screenShareStopped', () => {
+    const remoteScreen = document.getElementById('remote_screen');
+    remoteScreen.srcObject = null;
+    hideScreenContainer();
+});
+
+function hideScreenContainer() {
+    const container = document.getElementById('screen_sharing_container');
+    container.style.display = 'none';
+}
+
+socket.on('screenShareAnswer', async (data) => {
+    try {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    } catch (err) {
+        console.error('Ekran paylaşım answer işleme hatası:', err);
+    }
+});
+
+function getCurrentPeerId() {
+    // Bire bir görüşme için
+    if (CURRENT_CHAT_USER) {
+        return CURRENT_CHAT_USER;
+    }
+    
+    // Grup görüşmesi için (eğer grup ID'si farklı bir değişkende tutuluyorsa)
+    // if (CURRENT_GROUP_ID) {
+    //     return CURRENT_GROUP_ID;
+    // }
+    
+    throw new Error("No active peer found");
+}
+
+
+function showCallStatus() {
+     document.getElementById('callStatus').style.display = 'block';
+     startCallTimer();
+}
+
+function hideCallStatus() {
+     document.getElementById('callStatus').style.display = 'none';
+     stopCallTimer();
+}
+
+function startCallTimer() {
+     startTime = new Date();
+     timerInterval = setInterval(updateCallTimer, 1000);
+}
+
+function stopCallTimer() {
+     clearInterval(timerInterval);
+}
+
+function updateCallTimer() {
+            const now = new Date();
+            const diff = now - startTime;
+            const hours = Math.floor(diff / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            
+            document.getElementById('callTimer').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function playCallingSound() {
+  try {
+    callingSound.currentTime = 0;
+    callingSound.play().catch(e => console.log('Calling sound play error:', e));
+  } catch(e) {
+    console.error('Calling sound error:', e);
+  }
+}
+
+
+function playIncomingSound() {
+  try {
+    incomingSound.currentTime = 0;
+    incomingSound.play().catch(e => console.log('Incoming sound play error:', e));
+  } catch(e) {
+    console.error('Incoming sound error:', e);
+  }
+}
+
+function stopAllCallSounds() {
+  callingSound.pause();
+  incomingSound.pause();
+  callingSound.currentTime = 0;
+  incomingSound.currentTime = 0;
+}
+
+    function get_data(find, type) {
+        var xml = new XMLHttpRequest();
+        var loader_holder = _("loader_holder");
+        loader_holder.className = "loader_on";
+
+        xml.onload = function() {
+            if(xml.readyState == 4 || xml.status == 200) {
+                loader_holder.className = "loader_off";
+                handle_result(xml.responseText, type);
+            }
+        }
+
+        var data = {};
+        data.find = find;
+        data.data_type = type;
+        data = JSON.stringify(data);
+
+        xml.open("POST", "api.php", true);
+        xml.send(data);
+    }
+
+    
+    function handle_result(result, type) {
+        if(result.trim() != "") {
+            var inner_content = _("main_content");
+            var obj = JSON.parse(result);
+            if(obj.message_type == "info") {
+                alert(obj.message);
+                return;
+            }
+
+            switch(obj.data_type) {
+                case "user_info":
+                    var user_info = _("user_info_content");
+                    user_info.innerHTML = obj.message;
+                    break;
+
+                case "contacts":
+                case "messages":
+                case "groups":
+                case "settings":
+                case "friends":
+                    inner_content.innerHTML = obj.message;
+                    break;
+
+                case "send_message":
+                    var messages_holder = _("messages_holder");
+                    messages_holder.innerHTML = obj.message;
+                    break;
+            }
+        }
+    }
+    function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('expanded');
+            localStorage.setItem('sidebarExpanded', sidebar.classList.contains('expanded'));
+        }
+
+    // Add this to restore sidebar state on page load
+    window.addEventListener('load', function() {
+            const sidebar = document.getElementById('sidebar');
+            const isExpanded = localStorage.getItem('sidebarExpanded') === 'true';
+            if(isExpanded) sidebar.classList.add('expanded');
+            
+            // 2 saniye içinde içerik yüklenmezse hoşgeldin göster
+            setTimeout(() => {
+                if(document.getElementById("main_content").innerHTML === "") {
+                    document.getElementById("welcome_section").style.display = 'grid';
+                }
+            }, 2000);
+        });
+        // Sayfa yüklendiğinde mesajları göster
+        window.onload = function() {
+            loadMessages();
+            checkNotifications();
+        };
+        function loadMessages() {
+            // Aktif butonu güncelle
+            document.querySelectorAll('.nav_button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector('button[onclick="loadMessages()"]').classList.add('active');
+
+            // Önce mesajlar listesini yükle
+            let data = {
+                data_type: "messages"
+            };
+
+            let xml = new XMLHttpRequest();
+            xml.onload = function() {
+                if(xml.status == 200) {
+                    let response = JSON.parse(xml.responseText);
+                    if(response.data_type == "messages") {
+                        document.getElementById("main_content").innerHTML = response.message;
+                        // Eğer sayfa içinde çalıştırılması gereken scriptler varsa çalıştır
+                        let scripts = document.getElementById("main_content").getElementsByTagName("script");
+                        for(let script of scripts) {
+                            eval(script.innerHTML);
+                        }
+                    }
+                }
+            };
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+        }
+
+        var activeIntervals = [];
+
+        function loadContent(type) {
+            hideWelcomeSection();
+            clearContent();
+            
+            let data = { data_type: type };
+            sendRequest(data, function(response) {
+                document.getElementById("main_content").innerHTML = response.message;
+                executeScripts();
+            });
+        }
+
+        // Yardımcı Fonksiyonlar
+        function hideWelcomeSection() {
+            document.getElementById("welcome_section").style.display = 'none';
+        }
+
+        function clearContent() {
+            document.getElementById("main_content").innerHTML = '';
+        }
+
+        function sendRequest(data, callback) {
+            const xml = new XMLHttpRequest();
+            xml.onload = function() {
+                if(xml.status === 200) {
+                    const response = JSON.parse(xml.responseText);
+                    callback(response);
+                }
+            };
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+        }
+
+        function executeScripts() {
+            const scripts = document.getElementById("main_content").getElementsByTagName("script");
+            for(let script of scripts) {
+                try {
+                    new Function(script.innerHTML)();
+                } catch(e) {
+                    console.error('Script execution error:', e);
+                }
+            }
+        }
+
+// Sayfadan ayrılırken tüm interval'leri temizle
+window.addEventListener('beforeunload', function() {
+    activeIntervals.forEach(interval => clearInterval(interval));
+    activeIntervals = [];
+});
+        function checkNotifications() {
+            let data = {
+                data_type: "check_notifications"
+            };
+
+            let xml = new XMLHttpRequest();
+            xml.onload = function() {
+                if(xml.status == 200 || xml.readyState == 4) {
+                    let response = JSON.parse(xml.responseText);
+                    if(response.data_type == "notifications") {
+                        updateNotificationBadges(response.notifications);
+                    }
+                }
+            }
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+
+            // Her 30 saniyede bir kontrol et
+            setTimeout(checkNotifications, 30000);
+        }
+
+
+        function updateNotificationBadges(notifications) {
+            // Mesaj bildirimleri
+            let messagesBadge = document.getElementById("messages_badge");
+            if(notifications.messages) {
+                messagesBadge.style.display = "block";
+                messagesBadge.textContent = notifications.messages;
+            } else {
+                messagesBadge.style.display = "none";
+            }
+
+            // Arkadaşlık istekleri
+            let friendsBadge = document.getElementById("friends_badge");
+            if(notifications.friend_requests) {
+                friendsBadge.style.display = "block";
+                friendsBadge.textContent = notifications.friend_requests;
+            } else {
+                friendsBadge.style.display = "none";
+            }
+
+            // Grup bildirimleri
+            let groupsBadge = document.getElementById("groups_badge");
+            if(notifications.group_messages || notifications.group_invites) {
+                groupsBadge.style.display = "block";
+                groupsBadge.textContent = (notifications.group_messages || 0) + (notifications.group_invites || 0);
+            } else {
+                groupsBadge.style.display = "none";
+            }
+        }
+
+        function logout() {
+            let data = {
+                data_type: "logout"
+            };
+
+            let xml = new XMLHttpRequest();
+            xml.onload = function() {
+                window.location.href = "index.php";
+            }
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+        }
+
+        // Kullanıcı durumunu güncelle
+        function updateUserStatus() {
+            let data = {
+                data_type: "user_status_update"
+            };
+
+            let xml = new XMLHttpRequest();
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+        }
+function previewGroupImage(input) {
+    if (input.files && input.files[0]) {
+        // Check file size
+        if (input.files[0].size > 5 * 1024 * 1024) {
+            alert('Dosya boyutu 5MB\'dan küçük olmalıdır');
+            input.value = '';
+            return;
+        }
+
+        let reader = new FileReader();
+        reader.onload = function(e) {
+            let preview = document.getElementById('groupImagePreview');
+            preview.innerHTML = `<img src="${e.target.result}" style="width:100%; height:100%; object-fit:cover;">`;
+        }
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+    function closeCreateGroupModal() {
+        document.getElementById('createGroupModal').remove();
+    }
+
+    function createGroupWithImage(name, description, imagePath) {
+    let data = {
+        data_type: "create_group",
+        find: {
+            name: name,
+            description: description,
+            group_image: imagePath
+        }
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "group_created") {
+                closeCreateGroupModal();
+                loadContent('groups');
+            } else {
+                alert(response.message || "Grup oluşturulurken bir hata oluştu");
+            }
+            document.querySelector('.create_group_btn').disabled = false;
+        }
+    };
+    xml.onerror = function() {
+        alert("Grup oluşturulurken bir hata oluştu");
+        document.querySelector('.create_group_btn').disabled = false;
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+
+
+function createGroupWithData(name, description, imagePath) {
+    let data = {
+        data_type: "create_group",
+        find: {
+            name: name,
+            description: description,
+            group_image: imagePath
+        }
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "group_created") {
+                closeCreateGroupModal();
+                loadContent('groups');
+            } else {
+                alert(response.message || "Grup oluşturulurken bir hata oluştu");
+            }
+            let createButton = document.querySelector('.create_group_btn');
+            if(createButton) createButton.disabled = false;
+        }
+    };
+    xml.onerror = function() {
+        alert("Grup oluşturulurken bir hata oluştu");
+        let createButton = document.querySelector('.create_group_btn');
+        if(createButton) createButton.disabled = false;
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+function sendGroupCreationRequest(name, description, imagePath) {
+    let data = {
+        data_type: "create_group",
+        find: {
+            name: name,
+            description: description,
+            group_image: imagePath
+        }
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "group_created") {
+                closeCreateGroupModal();
+                loadContent('groups');
+            } else {
+                alert(response.message || "Grup oluşturulurken bir hata oluştu");
+            }
+            let createButton = document.querySelector('.create_group_btn');
+            if(createButton) createButton.disabled = false;
+        }
+    };
+    xml.onerror = function() {
+        alert("Grup oluşturulurken bir hata oluştu");
+        let createButton = document.querySelector('.create_group_btn');
+        if(createButton) createButton.disabled = false;
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+
+    function openGroupChat(groupId) {
+        let data = {
+            data_type: "group_chat",
+            group_id: groupId
+        };
+
+        let xml = new XMLHttpRequest();
+        xml.onload = function() {
+            if(xml.status == 200) {
+                let response = JSON.parse(xml.responseText);
+                if(response.data_type == "group_chat") {
+                    document.getElementById("main_content").innerHTML = response.message;
+                    let scripts = document.getElementById("main_content").getElementsByTagName("script");
+                    for(let script of scripts) {
+                        eval(script.innerHTML);
+                    }
+                }
+            }
+        };
+        xml.open("POST", "api.php", true);
+        xml.send(JSON.stringify(data));
+    }
+    function inviteToGroup(groupId, friendId) {
+    let data = {
+        data_type: "invite_to_group",
+        group_id: groupId,
+        friend_userid: friendId
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                alert("Davet başarıyla gönderildi");
+                // Refresh the manage group page to update the list
+                manageGroup(groupId);
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.onerror = function() {
+        alert("Bir hata oluştu");
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+
+    function manageGroup(groupId) {
+        let data = {
+            data_type: "manage_group",
+            group_id: groupId
+        };
+
+        let xml = new XMLHttpRequest();
+        xml.onload = function() {
+            if(xml.status == 200) {
+                let response = JSON.parse(xml.responseText);
+                if(response.data_type == "manage_group") {
+                    document.getElementById("main_content").innerHTML = response.message;
+                    let scripts = document.getElementById("main_content").getElementsByTagName("script");
+                    for(let script of scripts) {
+                        eval(script.innerHTML);
+                    }
+                }
+            }
+        };
+        xml.open("POST", "api.php", true);
+        xml.send(JSON.stringify(data));
+    }
+    function handle_friend_request(request_id, action) {
+            let data = {
+                data_type: "handle_friend_request",
+                request_id: request_id,
+                action: action
+            };
+
+            let xml = new XMLHttpRequest();
+            xml.onload = function() {
+                if(xml.status == 200) {
+                    let response = JSON.parse(xml.responseText);
+                    if(response.data_type == "friend_request_accepted" || 
+                       response.data_type == "friend_request_rejected") {
+                        loadContent('friends'); // Sayfayı yenile
+                    } else {
+                        alert(response.message);
+                    }
+                }
+            };
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+        }
+
+        function send_friend_request(friend_id) {
+    let button = event.currentTarget;
+    button.disabled = true; // Disable button while request is processing
+    
+    let data = {
+        data_type: "send_friend_request",
+        find: {
+            friend_id: friend_id
+        }
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "friend_request_sent") {
+                // Update button appearance
+                button.classList.add("pending");
+                button.innerHTML = `
+                    <img src="ui/icons/tick.png" alt="Sent">
+                    <span class="request_text">İstek Gönderildi</span>
+                `;
+                button.disabled = true;
+            } else {
+                // Re-enable button if there was an error
+                button.disabled = false;
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+function deleteMessage(messageId) {
+    if(!confirm('Bu mesajı silmek istediğinizden emin misiniz?')) {
+        return;
+    }
+
+    let data = {
+        data_type: "delete_message",
+        rowid: messageId
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "delete_message") {
+                // Get the current chat user ID from the URL or data attribute
+                let chatArea = document.getElementById('chat_area');
+                let currentUserId = chatArea.getAttribute('data-user-id');
+                let currentUsername = chatArea.getAttribute('data-username');
+                
+                if(currentUserId) {
+                    openChat(currentUserId, currentUsername);
+                }
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+
+
+
+
+        function remove_friend(friendship_id) {
+            if(confirm("Bu arkadaşı silmek istediğinizden emin misiniz?")) {
+                let data = {
+                    data_type: "remove_friend",
+                    friendship_id: friendship_id
+                };
+
+                let xml = new XMLHttpRequest();
+                xml.onload = function() {
+                    if(xml.status == 200) {
+                        let response = JSON.parse(xml.responseText);
+                        if(response.data_type == "friend_removed") {
+                            loadContent('friends'); // Sayfayı yenile
+                        } else {
+                            alert(response.message);
+                        }
+                    }
+                };
+                xml.open("POST", "api.php", true);
+                xml.send(JSON.stringify(data));
+            }
+        }
+
+        function start_chat(userid, username) {
+    // First switch to messages tab
+    loadContent('messages');
+    
+    // Then load the chat after a small delay to ensure messages tab is loaded
+    setTimeout(() => {
+        let data = {
+            data_type: "chat",
+            find: {
+                userid: userid
+            }
+        };
+
+        let xml = new XMLHttpRequest();
+        xml.onload = function() {
+            if(xml.status == 200) {
+                let response = JSON.parse(xml.responseText);
+                if(response.data_type == "chat") {
+                    document.getElementById("main_content").innerHTML = response.message;
+                    let scripts = document.getElementById("main_content").getElementsByTagName("script");
+                    for(let script of scripts) {
+                        eval(script.innerHTML);
+                    }
+                }
+            }
+        };
+        xml.open("POST", "api.php", true);
+        xml.send(JSON.stringify(data));
+    }, 100);
+
+    // Update active nav button
+    document.querySelectorAll('.nav_button').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector('button[onclick="loadContent(\'messages\')"]').classList.add('active');
+}
+
+        function loadFriendsPage(page) {
+    let data = {
+        data_type: "friends",
+        page: page
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200 || xml.readyState == 4) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type != "error") {
+                document.getElementById("main_content").innerHTML = response.message;
+                // Eğer sayfa içinde çalıştırılması gereken scriptler varsa çalıştır
+                let scripts = document.getElementById("main_content").getElementsByTagName("script");
+                for(let script of scripts) {
+                    eval(script.innerHTML);
+                }
+            }
+        }
+    }
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+function showCreateGroupModal() {
+            document.getElementById("createGroupModal").style.display = "flex";
+        }
+
+        function closeCreateGroupModal() {
+            document.getElementById("createGroupModal").style.display = "none";
+        }
+
+        function createGroup() {
+            let name = document.getElementById("group_name").value;
+            let description = document.getElementById("group_description").value;
+            let privacyLevel = document.querySelector("input[name=\'privacy_level\']:checked")?.value;
+
+            if(!name) {
+                alert("Lütfen grup adı girin");
+                return;
+            }
+
+            if(!privacyLevel) {
+                alert("Lütfen gizlilik seviyesi seçin");
+                return;
+            }
+
+            let data = {
+                data_type: "create_group",
+                find: {
+                    name: name,
+                    description: description,
+                    privacy_level: privacyLevel
+                }
+            };
+
+            let xml = new XMLHttpRequest();
+            xml.onload = function() {
+                if(xml.status == 200) {
+                    let response = JSON.parse(xml.responseText);
+                    if(response.data_type == "group_created") {
+                        closeCreateGroupModal();
+                        location.reload();
+                    } else {
+                        alert(response.message);
+                    }
+                }
+            };
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll(".groups_grid").forEach(grid => {
+                grid.style.display = "none";
+            });
+            document.getElementById(tabName).style.display = "grid";
+            
+            document.querySelectorAll(".tab").forEach(tab => {
+                tab.classList.remove("active");
+            });
+            document.querySelector(`[onclick="showTab(\'${tabName}\')"]`).classList.add("active");
+        }
+
+        function searchGroups(query) {
+            query = query.toLowerCase();
+            document.querySelectorAll(".group_card").forEach(card => {
+                const name = card.querySelector(".group_name").textContent.toLowerCase();
+                const desc = card.querySelector(".group_description").textContent.toLowerCase();
+                
+                if(name.includes(query) || desc.includes(query)) {
+                    card.style.display = "block";
+                } else {
+                    card.style.display = "none";
+                }
+            });
+        }
+
+       
+//bu mesajlar kısmındakı kullanıcı icin
+function openChat(userid, username, event) {
+        CURRENT_CHAT_USER = userid;
+        let data = {
+            data_type: "chat",
+            find: {
+                userid: userid
+            }
+        };
+
+        let xml = new XMLHttpRequest();
+        xml.onload = function() {
+            if(xml.status == 200) {
+                let response = JSON.parse(xml.responseText);
+                if(response.data_type == "chat") {
+                    document.getElementById("chat_area").innerHTML = response.message;
+                    
+                    // Update active state
+                    if(event) {
+                        document.querySelectorAll(".contact").forEach(contact => {
+                            contact.classList.remove("active");
+                        });
+                        event.currentTarget.classList.add("active");
+                    }
+                }
+            }
+        };
+        xml.open("POST", "api.php", true);
+        xml.send(JSON.stringify(data));
+    }
+    function sendMessage(userid) {
+    let message = document.getElementById('message_text').value.trim();
+    if(!message) return;
+
+    let data = {
+        data_type: "send_message",
+        find: {
+            userid: userid,
+            message: message
+        }
+    };
+
+    // Add reply info if replying
+    if(window.currentReplyTo) {
+        data.find.replied_to = window.currentReplyTo.id;
+    }
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "send_message") {
+                document.getElementById('message_text').value = '';
+                cancelReply(); // Clear reply preview after sending
+                loadChatArea(userid); // Use loadChatArea instead of refresh_messages
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+    }
+
+    // Refresh messages list every 5 seconds
+    // setInterval(function() {
+    //     let data = {
+    //         data_type: 'messages'
+    //     };
+
+    //     let xml = new XMLHttpRequest();
+    //     xml.onload = function() {
+    //         if(xml.status == 200) {
+    //             let response = JSON.parse(xml.responseText);
+    //             if(response.data_type == 'messages') {
+    //                 document.querySelector('.messages_container').innerHTML = response.message;
+    //             }
+    //         }
+    //     };
+    //     xml.open('POST', 'api.php', true);
+    //     xml.send(JSON.stringify(data));
+    // }, 5000);
+
+    function loadChatArea(userid) {
+    let data = {
+        data_type: "chat",
+        find: {
+            userid: userid
+        }
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "chat") {
+                document.getElementById('chat_area').innerHTML = response.message;
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+function searchMessages(searchTerm) {
+    let data = {
+        data_type: "messages",
+        find: {
+            search: searchTerm
+        }
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "messages") {
+                document.getElementById("main_content").innerHTML = response.message;
+                // Execute any scripts in the response
+                let scripts = document.getElementById("main_content").getElementsByTagName("script");
+                for(let script of scripts) {
+                    eval(script.innerHTML);
+                }
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+// Add these functions inside the existing <script> tag
+function searchMessages(value) {
+        let data = {
+            data_type: "messages",
+            find: {
+                search: value
+            }
+        };
+
+        let xml = new XMLHttpRequest();
+        xml.onload = function() {
+            if(xml.status == 200) {
+                let response = JSON.parse(xml.responseText);
+                if(response.data_type == "messages") {
+                    document.getElementById("main_content").innerHTML = response.message;
+                }
+            }
+        };
+        xml.open("POST", "api.php", true);
+        xml.send(JSON.stringify(data));
+    }
+function updateMemberRole(groupId, memberId, newRole) {
+    let data = {
+        data_type: "update_member_role",
+        group_id: groupId,
+        member_userid: memberId,
+        new_role: newRole
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                manageGroup(groupId); // Refresh the manage group page
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+function createInviteLink(groupId) {
+    let password = document.getElementById('invite_password').value;
+    let expires = document.getElementById('invite_expires').value;
+    let maxUses = document.getElementById('invite_max_uses').value;
+
+    let data = {
+        data_type: "create_invite_link",
+        find: {
+            group_id: groupId,
+            password: password || null,
+            expires_at: expires || null,
+            max_uses: maxUses || null
+        }
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                manageGroup(groupId); // Refresh the manage group page
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+function updateGroupStyle(groupId, styleType, value) {
+    let data = {
+        data_type: "update_group_style",
+        group_id: groupId,
+        style_type: styleType,
+        value: value
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                // Optionally refresh the group chat if needed
+                if(document.querySelector('.chat_container')) {
+                    openGroupChat(groupId);
+                }
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+function copyInviteLink(code) {
+    let baseUrl = window.location.origin;
+    let inviteUrl = `${baseUrl}/join.php?code=${code}`;
+    
+    // Create temporary input element
+    let tempInput = document.createElement('input');
+    tempInput.value = inviteUrl;
+    document.body.appendChild(tempInput);
+    
+    // Select and copy
+    tempInput.select();
+    document.execCommand('copy');
+    
+    // Remove temporary element
+    document.body.removeChild(tempInput);
+    
+    alert('Davet linki kopyalandı!');
+}
+
+function deleteInviteLink(linkId) {
+    if(!confirm('Bu davet linkini silmek istediğinizden emin misiniz?')) {
+        return;
+    }
+
+    let data = {
+        data_type: "delete_invite_link",
+        invite_id: linkId
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                // Refresh the manage group page
+                let groupId = document.querySelector('.manage_group_container').dataset.groupId;
+                manageGroup(groupId);
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+function closeProfileCard() {
+    const card = document.querySelector('.user_profile_card');
+    if(card) {
+        card.style.animation = 'profileCardOut 0.3s ease forwards';
+        setTimeout(() => card.remove(), 300);
+    }
+}
+function uploadBackground(files) {
+    if (!files || !files[0]) return;
+
+    let formData = new FormData();
+    formData.append("file", files[0]);
+    formData.append("data_type", "background_image");
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function () {
+        if (xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if (response.data_type == "success") {
+                let preview = document.getElementById("background_preview");
+                preview.style.backgroundImage = `url('${response.file_path}')`;
+                preview.classList.remove("empty");
+                preview.innerHTML = `
+                    <button class="remove_background" onclick="removeBackground()">
+                        <img src="ui/icons/trash.png" alt="Remove">Kaldır
+                    </button>
+                `;
+                document.getElementById("success_message").style.display = "block";
+                document.getElementById("success_message").innerHTML = "Arka plan başarıyla yüklendi";
+                setTimeout(() => {
+                    document.getElementById("success_message").style.display = "none";
+                }, 3000);
+            } else {
+                document.getElementById("error").style.display = "block";
+                document.getElementById("error").innerHTML = response.message;
+            }
+        }
+    };
+    xml.open("POST", "uploader.php", true);
+    xml.send(formData);
+};
+
+function removeBackground() {
+    if (!confirm("Arka plan görselini silmek istediğinize emin misiniz?")) return;
+
+    let formData = new FormData();
+    formData.append("data_type", "remove_background");
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function () {
+        if (xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if (response.data_type == "success") {
+                let preview = document.getElementById("background_preview");
+                preview.style.backgroundImage = "none";
+                preview.classList.add("empty");
+                preview.innerHTML = "Henüz arka plan resmi seçilmemiş";
+
+                document.getElementById("success_message").style.display = "block";
+                document.getElementById("success_message").innerHTML = "Arka plan resmi kaldırıldı";
+                setTimeout(() => {
+                    document.getElementById("success_message").style.display = "none";
+                }, 3000);
+            } else {
+                document.getElementById("error").style.display = "block";
+                document.getElementById("error").innerHTML = response.message;
+            }
+        }
+    };
+    xml.open("POST", "uploader.php", true);
+    xml.send(formData); // ✅ JSON değil, FormData olarak gönderiyoruz
+}
+ function handleGroupImage(files) {
+    if (!files || !files[0]) return;
+
+    let formData = new FormData();
+    formData.append("file", files[0]);
+    formData.append("data_type", "group_image");
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                // Başarılı yükleme durumunda önizleme göster
+                let preview = document.createElement('img');
+                preview.src = response.file_path;
+                preview.style.width = '100%';
+                preview.style.height = '100%';
+                preview.style.objectFit = 'cover';
+                document.querySelector('.group_icon').innerHTML = '';
+                document.querySelector('.group_icon').appendChild(preview);
+                
+                // Gizli bir input ekleyerek resim yolunu sakla
+                let hiddenInput = document.createElement('input');
+                hiddenInput.type = 'hidden';
+                hiddenInput.name = 'group_image';
+                hiddenInput.value = response.file_path;
+                document.querySelector('.modal_content').appendChild(hiddenInput);
+            } else {
+                alert(response.message || "Resim yüklenirken bir hata oluştu");
+            }
+        }
+    };
+    xml.open("POST", "uploader.php", true);
+    xml.send(formData);
+};
+
+function updateProfileBackground(files) {
+    if(!files.length) return;
+
+    const formData = new FormData();
+    formData.append('file', files[0]);
+    formData.append('type', 'background');
+
+    fetch('upload_background.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if(data.success) {
+            document.getElementById('profile_header_bg').style.backgroundImage = `url('${data.url}')`;
+        }
+    });
+}
+
+function loadUserBackground(userid) {
+    fetch(`api.php?data_type=get_user_background&userid=${userid}`)
+    .then(response => response.json())
+    .then(data => {
+        if(data.data_type === "user_background" && data.background) {
+            let header = document.getElementById('profile_header_bg');
+            if(header) {
+                header.style.backgroundImage = `url('${data.background}')`;
+                header.style.backgroundSize = 'cover';
+                header.style.backgroundPosition = 'center';
+            }
+        }
+    })
+    .catch(error => console.error('Error:', error));
+}
+
+function updateBio(content) {
+    fetch('update_bio.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ bio: content })
+    });
+}
+
+function startPrivateChat(userid) {
+    // Özel mesajlaşma sayfasına yönlendir
+    window.location.href = `chat.php?userid=${userid}`;
+}
+function uploadProfileBackground(files, userid) {
+    if (!files || !files.length) return;
+
+    const file = files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('data_type', 'background_image');
+    formData.append('userid', userid);
+
+    fetch('uploader.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.data_type === 'success') {
+            // Update the background in the DOM
+            const memberCard = document.querySelector(`[data-userid="${userid}"]`);
+            if (memberCard) {
+                memberCard.setAttribute('data-background', data.file_path);
+                memberCard.style.backgroundImage = `url('${data.file_path}')`;
+            }
+            
+            // Update the profile card if it's open
+            const profileCard = document.querySelector('.user_profile_card');
+            if (profileCard) {
+                profileCard.querySelector('.profile_header').style.backgroundImage = `url('${data.file_path}')`;
+            }
+        } else {
+            alert(data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Dosya yüklenirken bir hata oluştu');
+    });
+}
+
+// function refreshMessages() {
+//         if(CURRENT_CHAT_USER) {
+//             openChat(CURRENT_CHAT_USER, '', null);
+//         }
+//     }
+function sendGroupMessage(groupId) {
+    const messageInput = document.getElementById('message_text');
+    const message = messageInput.value.trim();
+    
+    if(message) {
+        // Mesaj gönderme AJAX çağrısı
+        let data = {
+            data_type: "send_group_message",
+            group_id: groupId,
+            message: message
+        };
+
+        let xml = new XMLHttpRequest();
+        xml.onload = function() {
+            if(xml.status === 200) {
+                const response = JSON.parse(xml.responseText);
+                if(response.data_type === "success") {
+                    // Mesaj gönderildikten sonra temizle ve scroll et
+                    messageInput.value = '';
+                    messageInput.style.height = 'auto';
+                    requestAnimationFrame(() => {
+                        const messagesContainer = document.getElementById('messages_container');
+                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                    });
+                }
+            }
+        };
+        xml.open("POST", "api.php", true);
+        xml.send(JSON.stringify(data));
+    }
+}
+
+// Add this function to scroll to bottom initially
+function scrollToBottom() {
+    const container = document.getElementById('chat_messages');
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+// Call this after loading messages
+window.onload = function() {
+    const container = document.getElementById('chat_messages');
+    if (container) {
+        scrollToBottom();
+    }
+};
+
+// Modify your send_data function in index.php
+function start_chat(userid, username) {
+    // First load the messages section
+    let data = {
+        data_type: "messages"
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "messages") {
+                document.getElementById("main_content").innerHTML = response.message;
+                
+                // After messages section is loaded, open the specific chat
+                setTimeout(() => {
+                    openChat(userid, username);
+                }, 100);
+
+                // Update active nav button
+                document.querySelectorAll('.nav_button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelector('button[onclick="loadMessages()"]').classList.add('active');
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+// In index.php, add/modify the handleGroupInvite function:
+
+    // In index.php, update/add the handleGroupInvite function:
+
+function handleGroupInvite(inviteId, action) {
+    let data = {
+        data_type: "handle_group_invite",
+        invite_id: inviteId,
+        action: action
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                if(action === "accept") {
+                    // After accepting, redirect to groups page and open the group chat
+                    loadContent('groups');
+                    setTimeout(() => {
+                        openGroupChat(response.group_id);
+                    }, 500);
+                } else {
+                    // Just refresh the friends page if rejected
+                    loadContent('friends');
+                }
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+
+function search_contacts_with_button() {
+            let searchTerm = document.getElementById("search_input").value;
+            let data = {
+                data_type: "contacts",
+                find: {
+                    search: searchTerm
+                }
+            };
+
+            let xml = new XMLHttpRequest();
+            xml.onload = function() {
+                if(xml.status == 200) {
+                    let response = JSON.parse(xml.responseText);
+                    if(response.data_type == "contacts") {
+                        document.getElementById("main_content").innerHTML = response.message;
+                        // Execute any scripts in the response
+                        let scripts = document.getElementById("main_content").getElementsByTagName("script");
+                        for(let script of scripts) {
+                            eval(script.innerHTML);
+                        }
+                    }
+                }
+            };
+            xml.open("POST", "api.php", true);
+            xml.send(JSON.stringify(data));
+        }
+
+        // Her 60 saniyede bir kullanıcı durumunu güncelle
+        setInterval(updateUserStatus, 60000);
+        updateUserStatus(); // İlk çağrı
+        // Add this to the messages page JavaScript section:
+// Add this inside the existing <script> tag in index.php
+function checkNewMessages() {
+    let data = {
+        data_type: "check_new_messages"
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "new_messages" && response.data) {
+                updateMessageNotifications(response.data);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+
+function updateMessageNotifications(messages) {
+    let hasNewMessages = false;
+    let contacts = document.querySelectorAll('.contact');
+    
+    contacts.forEach(contact => {
+        let userid = contact.getAttribute('onclick').match(/openChat\("([^"]+)"/)[1];
+        let messageData = messages.find(m => m.userid === userid);
+        
+        if(messageData && messageData.unread_count > 0) {
+            hasNewMessages = true;
+            let nameDiv = contact.querySelector('.contact_name');
+            let existingBadge = nameDiv.querySelector('.unread_badge');
+            
+            if(existingBadge) {
+                existingBadge.textContent = messageData.unread_count;
+            } else {
+                let badge = document.createElement('span');
+                badge.className = 'unread_badge';
+                badge.textContent = messageData.unread_count;
+                nameDiv.appendChild(badge);
+            }
+            
+            // Update last message
+            let lastMessageDiv = contact.querySelector('.last_message');
+            if(lastMessageDiv && messageData.last_message) {
+                lastMessageDiv.textContent = messageData.last_message;
+            }
+        }
+    });if(hasNewMessages) {
+        let sound = document.getElementById('notification_sound');
+        sound.play().catch(e => console.log('Error playing sound:', e));
+    }
+
+}
+function removeGroupMember(groupId, memberId) {
+    if(!confirm('Bu üyeyi gruptan çıkarmak istediğinizden emin misiniz?')) {
+        return;
+    }
+
+    let data = {
+        data_type: "remove_group_member",
+        group_id: groupId,
+        member_userid: memberId
+    };
+
+    let xml = new XMLHttpRequest();
+    xml.onload = function() {
+        if(xml.status == 200) {
+            let response = JSON.parse(xml.responseText);
+            if(response.data_type == "success") {
+                // Grup yönetim sayfasını yenile
+                manageGroup(groupId);
+            } else {
+                alert(response.message);
+            }
+        }
+    };
+    xml.open("POST", "api.php", true);
+    xml.send(JSON.stringify(data));
+}
+let currentReplyTo = null;
+
+function replyToMessage(messageId, username, messageText) {
+    // Show reply preview
+    const replyPreview = document.getElementById('reply_preview');
+    if(!replyPreview) return;
+
+    replyPreview.style.display = 'flex';
+    replyPreview.innerHTML = `
+        <div class="reply_preview_content">
+            <img src="ui/icons/reply.png" style="width: 16px; height: 16px;">
+            <div class="reply_preview_text">
+                <strong>${username}</strong>: ${messageText}
+            </div>
+        </div>
+        <button class="close_reply_btn" onclick="cancelReply()">✕</button>
+    `;
+
+    // Store reply info
+    window.currentReplyTo = {
+        id: messageId,
+        username: username,
+        message: messageText
+    };
+
+    // Focus input
+    document.getElementById('message_text').focus();
+}
+
+function cancelReply() {
+    const replyPreview = document.getElementById('reply_preview');
+    if(!replyPreview) return;
+
+    replyPreview.style.display = 'none';
+    replyPreview.innerHTML = '';
+    window.currentReplyTo = null;
+}
+
+function scrollToMessage(messageId) {
+    const message = document.querySelector(`[data-message-id="${messageId}"]`);
+    if(message) {
+        message.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        message.style.backgroundColor = '#454950';
+        setTimeout(() => {
+            message.style.backgroundColor = '';
+        }, 2000);
+    }
+}
+
+setInterval(function() {
+        refreshMessages();
+    }, 5000);
+    document.querySelector('.user_profile_container').addEventListener('click', function() {
+            loadContent('profile_settings');
+        });
+
+        // Profil ayarları yükleme fonksiyonu
+        function loadProfileSettings() {
+            let data = { data_type: "profile_settings" };
+            // ... AJAX çağrısı ...
+        }
+
+        
+
+        // Genel Ayarlar Fonksiyonları
+function save_settings(e) {
+    e.preventDefault();
+    
+    let form = document.getElementById("profile_form");
+    let formData = new FormData(form);
+    let data = Object.fromEntries(formData);
+    data.data_type = "save_settings";
+
+    fetch('api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(response => {
+        if(response.data_type == "success") {
+            showSuccess(response.message);
+        } else {
+            showError(response.message);
+        }
+    })
+    .catch(error => showError("Bir hata oluştu: " + error));
+}
+
+function upload_profile_image(files) {
+    if(!files || files.length === 0) return;
+    
+    let formData = new FormData();
+    formData.append('file', files[0]);
+    formData.append('data_type', 'profile_image');
+
+    fetch('uploader.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(response => {
+        if(response.data_type == "profile_image") {
+            document.querySelector('.profile_image').src = response.image_path;
+            showSuccess("Profil fotoğrafı güncellendi");
+        } else {
+            showError(response.message);
+        }
+    })
+    .catch(error => showError("Yükleme hatası: " + error));
+}
+
+function updatePrivacySettings(settingType, value) {
+    fetch('api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            data_type: "update_privacy_settings",
+            setting_type: settingType,
+            value: value ? 1 : 0
+        })
+    })
+    .then(response => response.json())
+    .then(response => {
+        if(response.data_type == "success") {
+            showSuccess(response.message);
+        } else {
+            showError(response.message);
+        }
+    });
+}
+
+function deleteAccount() {
+    if(confirm("Hesabınızı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz!")) {
+        fetch('api.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({data_type: "delete_account"})
+        })
+        .then(response => response.json())
+        .then(response => {
+            if(response.data_type == "delete_account") {
+                window.location.href = "login.php";
+            } else {
+                showError(response.message);
+            }
+        });
+    }
+}
+
+// Yardım Formu Gönderimi
+function sendHelpRequest(e) {
+    e.preventDefault();
+    
+    const form = document.getElementById('help_form');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData);
+    data.data_type = "send_help_email";
+
+    fetch('api.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(response => {
+        if(response.data_type == "success") {
+            showSuccess(response.message);
+            form.reset();
+        } else {
+            showError(response.message);
+        }
+    })
+    .catch(error => showError("Bir hata oluştu: " + error));
+}
+
+// Section Değiştirme
+function showSection(section) {
+    document.querySelectorAll(".settings_content > div").forEach(div => {
+        div.style.display = "none";
+    });
+    document.getElementById(section + "_section").style.display = "block";
+
+    document.querySelectorAll(".nav_item").forEach(item => {
+        item.classList.remove("active");
+    });
+    document.querySelector(`[onclick="showSection('${section}')"]`).classList.add("active");
+}
+    </script>
+
+<script>
+// Socket.io bağlantısı
+const socket = io("https://www.epinetwork.shop:8443", {
+    path: '/socket.io/',
+    transports: ['websocket'],
+    secure: true,
+    rejectUnauthorized: false,
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    timeout: 20000
+});
+// WebRTC değişkenleri
+let peerConnection = null;
+let pendingIceCandidates = [];
+let localStream = null;
+const configuration = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
+    ]
+};
+
+// Socket.io event handlers
+socket.on('connect', () => {
+    console.log('Socket.IO bağlantısı başarılı');
+    // Kullanıcı ID'sini kaydet
+    socket.emit('register', '<?php echo $_SESSION['userid']; ?>');
+});
+
+socket.on('connect_error', (error) => {
+    console.error('Socket.IO bağlantı hatası:', error);
+});
+
+async function startCall(targetUserId) {
+    try {
+        // Ses akışını al
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Yeni RTCPeerConnection oluştur
+        peerConnection = new RTCPeerConnection(configuration);
+
+        // Yerel ses akışını ekle
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+        const localAudio = document.getElementById('local_audio');
+localAudio.srcObject = localStream;
+
+        peerConnection.ontrack = event => {
+            const remoteAudio = document.getElementById('remote_audio');
+            if (!remoteAudio.srcObject) {
+                remoteAudio.srcObject = event.streams[0];
+            }
+        };
+
+        // ICE adaylarını gönder
+        peerConnection.onicecandidate = event => {
+            if (event.candidate) {
+                socket.emit('iceCandidate', {
+                    to: targetUserId,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        // Offer oluştur
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        // Offer'ı karşı tarafa gönder
+        socket.emit('call', {
+            from: userid,
+            to: targetUserId,
+            offer: offer
+        });
+
+        // Arama UI'ını göster
+        showCallingUI();
+
+    } catch (error) {
+        console.error('Arama başlatılırken hata:', error);
+        endCall();
+    }
+}
+
+function showCallingUI() {
+    document.getElementById('call_modal').style.display = 'flex';
+    document.querySelector('.call_status').textContent = 'Aranıyor...';
+}
+
+function showInCallUI() {
+    document.getElementById('call_modal').style.display = 'none';
+    document.querySelector('.call_status').textContent = 'Görüşme devam ediyor...';
+}
+
+function hideCallUI() {
+    document.getElementById('call_modal').style.display = 'none';
+}
+
+
+socket.on('incomingCall', (data) => {
+    playIncomingSound();
+    showIncomingCallModal(data);
+});
+
+function showIncomingCallModal(data) {
+    playIncomingSound();
+    // Varsayım: HTML'de 'incoming_call_modal' id'li bir modal tanımlı.
+    const modal = document.getElementById('incoming_call_modal');
+    modal.style.display = 'flex';
+    
+    // Çağrı yapan kullanıcı bilgilerini (örneğin, ID veya isim) gösterin.
+    document.getElementById('caller_info').textContent = 'Çağrı yapan: ' + data.from;
+    
+    // Kabul butonuna event listener ekleyin.
+    document.getElementById('accept_call').onclick = async () => {
+        modal.style.display = 'none';
+        acceptCall(data);
+    };
+    
+    // Reddet butonuna event listener ekleyin.
+    document.getElementById('reject_call').onclick = () => {
+        stopAllCallSounds();
+        modal.style.display = 'none';
+        socket.emit('endCall', {
+            to: data.from
+        });
+    };
+}
+
+async function acceptCall(data) {
+  try {
+    stopAllCallSounds();
+    // Kullanıcının ses akışını al
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    
+    // Yeni RTCPeerConnection oluştur
+    peerConnection = new RTCPeerConnection(configuration);
+    
+    // Yerel akışı ekle
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+    
+    // Local audio elementini güncelle
+    const localAudio = document.getElementById('local_audio');
+    localAudio.srcObject = localStream;
+    
+    // Remote stream geldiğinde remote audio elementini güncelle
+    peerConnection.ontrack = event => {
+      const remoteAudio = document.getElementById('remote_audio');
+      if (!remoteAudio.srcObject) {
+        remoteAudio.srcObject = event.streams[0];
+      }
+    };
+    
+    // ICE adaylarını karşı tarafa gönder
+    peerConnection.onicecandidate = event => {
+      if (event.candidate) {
+        socket.emit('iceCandidate', {
+          to: data.from,
+          candidate: event.candidate
+        });
+      }
+    };
+    
+    // Gelen offer'ı remote description olarak ayarla
+    // Bazı tarayıcılarda new RTCSessionDescription ile sarmak gerekebilir:
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+    
+    // Buffer'da bekleyen ICE adaylarını ekle
+    for (const candidate of pendingIceCandidates) {
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (e) {
+        console.error("Buffered ICE adayı eklenirken hata:", e);
+      }
+    }
+    // Buffer'ı temizle
+    pendingIceCandidates = [];
+    
+    // Answer oluştur ve local description olarak ayarla
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    
+    // Oluşturulan answer'ı karşı tarafa gönder
+    socket.emit('answerCall', {
+      to: data.from,
+      answer: answer
+    });
+    
+    // Görüşme sırasında görüntülenecek UI'yı göster
+    showCallStatus();
+    showInCallUI();
+    
+  } catch (error) {
+    stopAllCallSounds();
+    console.error('Çağrı kabul edilirken hata:', error);
+    endCall();
+  }
+}
+
+
+socket.on('callAnswered', async (data) => {
+    try {
+        stopAllCallSounds();
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+        // Arama UI'ını güncelle
+        showCallStatus();
+        showInCallUI();
+    } catch (error) {
+        stopAllCallSounds();
+        console.error('Answer işlenirken hata:', error);
+        endCall();
+    }
+});
+
+socket.on('iceCandidate', async (data) => {
+  try {
+    // Eğer peerConnection henüz oluşturulmadıysa adayları buffer'a ekle
+    if (!peerConnection) {
+      pendingIceCandidates.push(data.candidate);
+    } else {
+      // PeerConnection hazırsa doğrudan ICE adayını ekle
+      await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+    }
+  } catch (error) {
+    console.error('ICE adayı eklenirken hata:', error);
+  }
+});
+
+socket.on('callEnded', () => {
+    hideCallStatus();
+    stopAllCallSounds();
+    endCall();
+});
+
+peerConnection.ontrack = (event) => {
+    if (event.track.kind === 'video') {
+        const isScreen = event.streams[0].id.includes('screen');
+        
+        if (isScreen) {
+            const remoteScreen = document.getElementById('remote_screen');
+            remoteScreen.srcObject = event.streams[0];
+            showRemoteScreenUI();
+        } else {
+            // Normal kamera görüntüsü
+            const remoteVideo = document.getElementById('remote_video');
+            if (remoteVideo) remoteVideo.srcObject = event.streams[0];
+        }
+    }
+};
+
+function showRemoteScreenUI() {
+    const container = document.getElementById('screen_sharing_container');
+    container.style.display = 'block';
+    container.querySelector('.local-screen-preview').style.display = 'none';
+    container.querySelector('.remote-screen-view').style.display = 'block';
+}
+
+function showScreenPreview(stream) {
+    const localScreen = document.getElementById('local_screen');
+    localScreen.srcObject = stream;
+    document.getElementById('screen_sharing_container').style.display = 'block';
+}
+
+// Arama başlatma fonksiyonu
+async function startVoiceCall(userId) {
+    try {
+        playCallingSound();
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        peerConnection = new RTCPeerConnection(configuration);
+        
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate) {
+                socket.emit('iceCandidate', {
+                    to: userId,
+                    candidate: event.candidate
+                });
+            }
+        };
+
+        peerConnection.ontrack = (event) => {
+
+            if (event.track.kind === 'video') {
+        const isScreenShare = event.streams[0].id.includes('screen');
+        
+        if (isScreenShare) {
+            const remoteScreen = document.getElementById('remote_screen');
+            if (!remoteScreen.srcObject) {
+                remoteScreen.srcObject = event.streams[0];
+            }
+            // Otomatik boyutlandırma
+            remoteScreen.style.objectFit = 'contain';
+            remoteScreen.style.backgroundColor = '#000';
+        } else {
+            // Normal kamera görüntüsü
+            const remoteVideo = document.getElementById('remote_video');
+            if (remoteVideo) remoteVideo.srcObject = event.streams[0];
+        }
+    }
+
+
+            if (event.track.kind === 'video' && event.track.displaySurface === 'monitor') {
+        const remoteScreen = document.getElementById('remote_screen');
+        if (!remoteScreen.srcObject) {
+            remoteScreen.srcObject = event.streams[0];
+        }
+         }
+         
+         if (event.track.kind === 'audio') {
+        const remoteAudio = document.createElement('audio');
+            remoteAudio.srcObject = event.streams[0];
+            remoteAudio.autoplay = true;
+            document.body.appendChild(remoteAudio);
+         }
+
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        socket.emit('call', {
+            from: '<?php echo $_SESSION["userid"]; ?>',
+            to: userId,
+            offer: offer
+        });
+
+        showCallModal('Aranıyor...');
+    } catch (err) {
+        stopAllCallSounds();
+        console.error('Error starting call:', err);
+        alert('Arama başlatılamadı: ' + err.message);
+    }
+}
+
+// Aramayı kabul etme fonksiyonu
+
+// Aramayı reddetme fonksiyonu
+function rejectCall(fromUserId) {
+    stopAllCallSounds();
+    socket.emit('endCall', {
+        to: fromUserId
+    });
+    hideCallModal();
+}
+
+// Aramayı sonlandırma fonksiyonu
+function endCall() {
+    stopAllCallSounds();
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+
+    // Audio elementlerini temizle
+    document.getElementById('local_audio').srcObject = null;
+    document.getElementById('remote_audio').srcObject = null;
+    hideCallStatus();
+    hideCallUI();
+}
+
+socket.on('callAnswered', () => {
+            showCallStatus();
+});
+
+// Modal kontrol fonksiyonları
+function showCallModal(status) {
+    const modal = document.getElementById('call_modal');
+    const statusDiv = modal.querySelector('.call_status');
+    statusDiv.textContent = status;
+    modal.style.display = 'flex';
+}
+
+function hideCallModal() {
+    const modal = document.getElementById('call_modal');
+    modal.style.display = 'none';
+}
+</script>
+</body>
+</html>

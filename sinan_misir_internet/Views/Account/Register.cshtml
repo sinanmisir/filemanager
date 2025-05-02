@@ -1,0 +1,140 @@
+﻿@model sinan_misir_internet.Models.RegisterViewModel
+@{
+    Layout = null;
+    ViewData["Title"] = "Kayıt Ol";
+}
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kayıt Ol</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        }
+
+        .register-container {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .form-control {
+            border-radius: 10px;
+            padding: 0.75rem;
+            border: 1px solid #dee2e6;
+            margin-bottom: 1rem;
+        }
+
+        .form-control:focus {
+            box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.25);
+            border-color: #4a90e2;
+        }
+
+        .btn-success {
+            background-color: #2ecc71;
+            border: none;
+            border-radius: 10px;
+            padding: 0.75rem;
+            width: 100%;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-success:hover {
+            background-color: #27ae60;
+            transform: translateY(-2px);
+        }
+
+        h2 {
+            color: #34495e;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .text-danger {
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            font-weight: 500;
+            color: #34495e;
+            margin-bottom: 0.5rem;
+        }
+
+        .login-link {
+            text-align: center;
+            margin-top: 1.5rem;
+        }
+
+        .login-link a {
+            color: #4a90e2;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .login-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="register-container">
+        <h2><i class="fas fa-user-plus mb-3"></i><br>Kayıt Ol</h2>
+
+        <form asp-action="Register" method="post">
+            <div class="form-group">
+                <label asp-for="UserName">Kullanıcı Adı</label>
+                <input asp-for="UserName" class="form-control" placeholder="Kullanıcı adınızı girin" />
+                <span asp-validation-for="UserName" class="text-danger"></span>
+            </div>
+
+            <div class="form-group">
+                <label asp-for="Email">E-posta</label>
+                <input asp-for="Email" class="form-control" placeholder="E-posta adresinizi girin" />
+                <span asp-validation-for="Email" class="text-danger"></span>
+            </div>
+
+            <div class="form-group">
+                <label asp-for="Password">Şifre</label>
+                <input asp-for="Password" class="form-control" type="password" placeholder="Şifrenizi girin" />
+                <span asp-validation-for="Password" class="text-danger"></span>
+            </div>
+
+            <div class="form-group">
+                <label asp-for="ConfirmPassword">Şifre Tekrar</label>
+                <input asp-for="ConfirmPassword" class="form-control" type="password" placeholder="Şifrenizi tekrar girin" />
+                <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+            </div>
+
+            <button type="submit" class="btn btn-success">
+                <i class="fas fa-user-plus me-2"></i> Kayıt Ol
+            </button>
+
+            <div class="login-link">
+                <p>Zaten hesabınız var mı? <a asp-action="Login">Giriş Yap</a></p>
+            </div>
+        </form>
+    </div>
+
+    <partial name="_ValidationScriptsPartial" />
+</body>
+</html>

@@ -1,0 +1,167 @@
+﻿@model List<sinan_misir_internet.DAL.DeletedFile>
+@{
+    Layout = null;
+    ViewData["Title"] = "Geri Dönüşüm Kutusu";
+}
+
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Geri Dönüşüm Kutusu</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f5f7fa;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            padding: 2rem 0;
+        }
+
+        .container {
+            max-width: 1200px;
+        }
+
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .table {
+            margin-bottom: 0;
+        }
+
+        .table th {
+            background-color: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+            color: #34495e;
+            font-weight: 600;
+        }
+
+        .table td {
+            vertical-align: middle;
+            padding: 1rem;
+        }
+
+        .btn {
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            transition: all 0.3s;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+
+        .btn-group .btn {
+            margin: 0 2px;
+        }
+
+        .page-header {
+            color: #34495e;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .page-header i {
+            font-size: 1.5rem;
+            color: #e74c3c;
+        }
+
+        .back-button {
+            transition: all 0.3s;
+        }
+
+        .back-button:hover {
+            transform: translateX(-2px);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #7f8c8d;
+        }
+
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2 class="page-header mb-0">
+                        <i class="fas fa-trash-alt"></i>
+                        Geri Dönüşüm Kutusu
+                    </h2>
+                    <a asp-action="Index" class="btn btn-outline-secondary back-button">
+                        <i class="fas fa-arrow-left"></i> Dosya Yöneticisine Dön
+                    </a>
+                </div>
+
+                @if (!Model.Any())
+                {
+                    <div class="empty-state">
+                        <i class="fas fa-trash"></i>
+                        <h4>Geri dönüşüm kutusu boş</h4>
+                        <p>Silinen dosyalar burada görüntülenecektir.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Dosya Adı</th>
+                                    <th>Silinme Tarihi</th>
+                                    <th>Kullanıcı</th>
+                                    <th>İşlem</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var file in Model)
+                                {
+                                    <tr>
+                                        <td>
+                                            <i class="fas fa-file text-primary me-2"></i>
+                                            @file.FileName
+                                        </td>
+                                        <td>@file.DeletedAt.ToString("g")</td>
+                                        <td>@file.User.UserName</td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <form asp-action="RestoreFile" method="post" class="d-inline">
+                                                    <input type="hidden" name="id" value="@file.Id" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-success"
+                                                            onclick="return confirm('Dosyayı geri yüklemek istiyor musunuz?');">
+                                                        <i class="fas fa-undo"></i>
+                                                    </button>
+                                                </form>
+                                                <form asp-action="PermanentlyDeleteFile" method="post" class="d-inline">
+                                                    <input type="hidden" name="id" value="@file.Id" />
+                                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                            onclick="return confirm('Bu dosyayı kalıcı olarak silmek istediğinize emin misiniz?');">
+                                                        <i class="fas fa-times"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</body>
+</html>

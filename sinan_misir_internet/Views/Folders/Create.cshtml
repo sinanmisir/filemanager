@@ -1,0 +1,45 @@
+﻿@model sinan_misir_internet.DAL.Folder
+
+@{
+    ViewData["Title"] = "Create";
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+}
+
+<h1>Create Folder</h1>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alert alert-danger">
+        <ul>
+            @foreach (var err in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+            {
+                <li>@err.ErrorMessage</li>
+            }
+        </ul>
+    </div>
+}
+
+<form asp-action="Create">
+    <div class="form-group">
+        <label asp-for="Name"></label>
+        <input asp-for="Name" class="form-control" />
+        <span asp-validation-for="Name" class="text-danger"></span>
+    </div>
+
+    <div class="form-group">
+        <label asp-for="UserId"></label>
+        <select asp-for="UserId" class="form-control" asp-items="ViewBag.UserId">
+            <option value="">Kullanıcı seçin</option> @* value="" olmalı, 0 değil! *@
+        </select>
+        <span asp-validation-for="UserId" class="text-danger"></span>
+    </div>
+
+    <div class="form-group">
+        <label asp-for="ParentFolderId"></label>
+        <select asp-for="ParentFolderId" class="form-control" asp-items="ViewBag.ParentFolderId">
+            <option value="">(Üst klasör yok)</option>
+        </select>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Oluştur</button>
+</form>

@@ -1,0 +1,30 @@
+﻿@model sinan_misir_internet.DAL.Folder
+
+@{
+    ViewData["Title"] = "Klasör Sil";
+    Layout = "~/Views/Shared/_AdminLayout.cshtml";
+}
+
+<h1>Klasörü Sil</h1>
+
+<h4>Silmek istediğinize emin misiniz?</h4>
+<hr />
+<dl class="row">
+    <dt class="col-sm-3">Klasör Adı</dt>
+    <dd class="col-sm-9">@Model.Name</dd>
+
+    <dt class="col-sm-3">Oluşturulma Tarihi</dt>
+    <dd class="col-sm-9">@Model.CreatedAt.ToString("g")</dd>
+
+    <dt class="col-sm-3">Kullanıcı</dt>
+    <dd class="col-sm-9">@Model.User?.UserName</dd>
+
+    <dt class="col-sm-3">Üst Klasör</dt>
+    <dd class="col-sm-9">@Model.ParentFolder?.Name ?? "(Yok)"</dd>
+</dl>
+
+<form asp-action="Delete" asp-route-id="@Model.Id" method="post">
+    <input type="hidden" asp-for="Id" />
+    <button type="submit" class="btn btn-danger">Sil</button>
+    <a asp-action="Index" class="btn btn-secondary">İptal</a>
+</form>
